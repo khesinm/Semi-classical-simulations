@@ -5,11 +5,15 @@ import sdeint
 from scipy.integrate import odeint
 import math
 import concurrent.futures
+import os
+from datetime import datetime
+import warnings
+warnings.filterwarnings("ignore")
 
 
 class oscillator:
 
-    def solve(self, g, ω, β, Γ, ϕ, y0, t, periods, acc):
+    def solve(self, g, ω, β, Γ, ϕ, y0, t, periods, acc, folder):
         cosϕ = math.cos(ϕ)
         cos2ϕ = math.cos(2*ϕ)
         sinϕ = math.sin(ϕ)
@@ -49,13 +53,13 @@ class oscillator:
 
         x = [β*xs[acc*i, 0] for i in range(periods)]
         y = [β*xs[acc*i, 1] for i in range(periods)]
-        plt.scatter(x, y, color='blue', s=periods/acc)
+        plt.scatter(x, y, color='blue', s=periods/(acc*10))
         plt.xlabel('x', fontsize=10)
         plt.ylabel('y', fontsize=10)
         plt.tick_params(labelsize=10)
         plt.title('The Poincare section')
-        print("plotting")
-        plt.savefig("acc=1000 gamma={}, beta={}.png".format(Γ, β))
+        plt.savefig(os.path.join(
+            folder, "acc={} gamma={}, beta={}.png".format(acc, Γ, β)))
 
 
 def Np(ϕ, χ, Π):
@@ -82,9 +86,9 @@ if __name__ == '__main__':
     ω = 1
     β = 0.03901
     Γ = 0.110
-    ϕ = 0
+    ϕ = 0.5
     periods = 400
-    acc = 1000
+    acc = 100
 
     y0 = np.array([0, 0.1, 0.1, 0.001])
     T = 2*np.pi/ω
@@ -97,11 +101,20 @@ if __name__ == '__main__':
 
     with concurrent.futures.ProcessPoolExecutor() as executor:
 
+        cwd = os.getcwd()
+        now = datetime.now()
+        current_time = now.strftime("%H:%M")
+        os.mkdir(os.path.join(cwd, current_time))
+        folder = os.path.join(cwd, current_time)
         executor.submit(osc.solve, g, ω, 0.06001,
-                        0.110, ϕ, y0, t, periods, acc)
+                        0.110, ϕ, y0, t, periods, acc, folder)
         executor.submit(osc2.solve, g, ω, .00001,
-                        0.110, ϕ, y0, t, periods, acc)
-        executor.submit(osc2.solve, g, ω, .03901, .209, ϕ, y0, t, periods, acc)
-        executor.submit(osc2.solve, g, ω, .00001, .209, ϕ, y0, t, periods, acc)
-        executor.submit(osc2.solve, g, ω, .25, .05, ϕ, y0, t, periods, acc)
-        executor.submit(osc2.solve, g, ω, .12, .05, ϕ, y0, t, periods, acc)
+                        0.110, ϕ, y0, t, periods, acc, folder)
+        executor.submit(osc2.solve, g, ω, .03901, .209,
+                        ϕ, y0, t, periods, acc, folder)
+        executor.submit(osc2.solve, g, ω, .00001, .209,
+                        ϕ, y0, t, periods, acc, folder)
+        executor.submit(osc2.solve, g, ω, .25, .05, ϕ,
+                        y0, t, periods, acc, folder)
+        executor.submit(osc2.solve, g, ω, .12, .05, ϕ,
+                        y0, t, periods, acc, folder)
