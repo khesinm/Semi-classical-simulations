@@ -1,0 +1,160 @@
+# The following code is a portion of Yusuf's code combined with code 
+# from https://scicomp.stackexchange.com/questions/36013/numerical-computation-of-lyapunov-exponent/36023#36023
+# (modified to fit with Yusuf's code). This should give us a graph of the Lyapunov exponents. I'm running into some
+# issues still, but I am uploading this version for now.
+
+import time
+import matplotlib.pyplot as plt
+import numpy as np
+import sdeint
+from scipy.integrate import odeint
+import math
+import concurrent.futures
+import os
+from datetime import datetime
+import threading
+from queue import Queue
+
+class oscillator:
+
+    def solve(self, g, ω, β, Γ, ϕ, y0, t, periods, acc, folder):
+        cosϕ = math.cos(ϕ)
+        cos2ϕ = math.cos(2*ϕ)
+        sinϕ = math.sin(ϕ)
+        sin2ϕ = math.cos(2*ϕ)
+        sqrtΓ = math.sqrt(Γ)
+
+        def f(y, t):
+            x = y[0]
+            p = y[1]
+            χ = y[2]
+            Π = y[3]
+
+            f0 = p
+            f1 = -β**2 * x**3 + (1-3*β**2*χ**2) * x - 2 * \
+                Γ*p + g/β * math.cos(ω*t)
+            f2 = Π + Γ*((χ-χ**3+χ*Π**2-1/(4*χ))*math.cos(2*ϕ) - Π*(-1+2*χ**2)
+                        * math.sin(2*ϕ) + χ - χ**3 - χ*Π**2 + 1/(4*χ))
+            f3 = χ*(1-3*β**2*(x**2 + χ**2)) + 1/(4*χ**3) + Γ*((Π**3 - Π + 3*Π/(4*χ**2) - Π*χ**2) * math.cos(2*ϕ)
+                                                              - (-1/(4*χ**2)+1/χ-χ+2*χ*Π**2)*math.sin(2*ϕ)
+                                                              + (-Π**3 - Π - 3*Π/(4*χ**2)-Π*χ**2))
+            return np.array([f0, f1, f2, f3])
+
+        def W(y, t):
+            x = y[0]
+            p = y[1]
+            χ = y[2]
+            Π = y[3]
+            return np.diag([
+                sqrtΓ*(2*(χ ** 2 - 1/2)*math.cos(ϕ) + 2 * χ*Π*math.sin(ϕ)),
+                sqrtΓ * (2 * (1/(4*χ**2) + Π**2 - 1/2)*math.sin(ϕ)+2*χ*Π*math.cos(ϕ)),
+                0,
+                0])
+            # return np.diag([
+            #     sqrtΓ*(2*(χ ** 2 - 1/2)*cosϕ + 2 * χ*Π*sinϕ),
+            #     sqrtΓ * (2 * (1/(4*χ**2) + Π**2 - 1/2)*sinϕ+2*χ*Π*cosϕ),
+            #     0,
+            #     0])
+
+        start_time = time.time()
+        T = 2*np.pi/ω
+        xs = sdeint.itoint(f, W, y0, t)
+        print("--- %s seconds ---" % (time.time() - start_time))
+
+        x = [β*xs[acc*i, 0] for i in range(periods)]
+        y = [β*xs[acc*i, 1] for i in range(periods)]
+        plt.scatter(x, y, color='blue', s=periods/(acc*10))
+        plt.xlabel('x', fontsize=10)
+        plt.ylabel('y', fontsize=10)
+        plt.tick_params(labelsize=10)
+        plt.title('The Poincare section')
+        plt.savefig(os.path.join(
+            folder, "acc={} gamma={}, beta={}.png".format(acc, Γ, β)))
+
+    def bifurcation(self, arr):
+        β, g, ω, Γ, ϕ, y0, t, periods, acc, folder = arr
+        cosϕ = math.cos(ϕ)
+        cos2ϕ = math.cos(2*ϕ)
+        sinϕ = math.sin(ϕ)
+        sin2ϕ = math.cos(2*ϕ)
+        sqrtΓ = math.sqrt(Γ)
+
+        def f(y, t):
+            x = y[0]
+            p = y[1]
+            χ = y[2]
+            Π = y[3]
+
+            f0 = p
+            f1 = -β**2 * x**3 + (1-3*β**2*χ**2) * x - 2 * \
+                Γ*p + g/β * math.cos(ω*t)
+            f2 = Π + Γ*((χ-χ**3+χ*Π**2-1/(4*χ))*math.cos(2*ϕ) - Π*(-1+2*χ**2)
+                        * math.sin(2*ϕ) + χ - χ**3 - χ*Π**2 + 1/(4*χ))
+            f3 = χ*(1-3*β**2*(x**2 + χ**2)) + 1/(4*χ**3) + Γ*((Π**3 - Π + 3*Π/(4*χ**2) - Π*χ**2) * math.cos(2*ϕ)
+                                                              - (-1/(4*χ**2)+1/χ-χ+2*χ*Π**2)*math.sin(2*ϕ)
+                                                              + (-Π**3 - Π - 3*Π/(4*χ**2)-Π*χ**2))
+            return np.array([f0, f1, f2, f3])
+
+        def W(y, t):
+            x = y[0]
+            p = y[1]
+            χ = y[2]
+            Π = y[3]
+            return np.diag([
+                sqrtΓ*(2*(χ ** 2 - 1/2)*math.cos(ϕ) + 2 * χ*Π*math.sin(ϕ)),
+                sqrtΓ * (2 * (1/(4*χ**2) + Π**2 - 1/2)*math.sin(ϕ)+2*χ*Π*math.cos(ϕ)),
+                0,
+                0])
+
+        T = 2*np.pi/ω
+        xs = sdeint.itoint(f, W, y0, t)
+        x = [β*xs[acc*i, 0] for i in range(periods)]
+        y = [β*xs[acc*i, 1] for i in range(periods)]
+
+        distances = [math.sqrt((β*x[i])**2+(β*y[i])**2)
+                     for i in range(len(x))]
+        # return [β, distances]
+        u = distances
+
+sigma = 10
+r = 28
+b = 8/3
+
+U = np.eye(3) #unit blob
+v0 = np.ones(3) #initial condition
+lyap = [] #empty list to store the lengths of the orthogonal axes
+
+iters=10**3
+dt=0.1
+tf=iters * dt
+
+def diff_Lorenz(u):
+    x = u[1]
+    y = u[2]
+    z = u[2]
+    f = [sigma * (y - x), r * x - y - x * z, x * y - b * z]
+    Df = [[-sigma, sigma, 0], [r - z, -1, -x], [y, x, -b]]
+    return np.array(f), np.array(Df)
+
+def LEC_system(u):
+    #x,y,z = u[:3]             # n=3
+    U = u[3:12].reshape([3,3]) # size n square matrix, sub-array from n to n+n*n=n*(n+1)
+    L = u[12:15]               # vector, sub-array from n*(n+1) to n*(n+1)+n=n*(n+2)
+    f,Df = diff_Lorenz(u[:3])
+    A = U.T.dot(Df.dot(U))
+    dL = np.diag(A).copy();
+    for i in range(2):
+        A[i,i] = 0
+        for j in range(i+1,3): A[i,j] = -A[j,i]
+    dU = U.dot(A)
+    return np.concatenate([f,dU.flatten(),dL])
+
+u0 = np.ones(3)
+U0 = np.identity(3)
+L0 = np.zeros(3)
+u0 = np.concatenate([u0, U0.flatten(), L0])
+t = np.linspace(0,200,501)
+u = odeint(lambda u,t:LEC_system(u),u0,t, hmax=0.05, full_output=1)
+L = u[5:, 12:15].T/t[5:]
+
+plt.plot(t[5:],L.T)
